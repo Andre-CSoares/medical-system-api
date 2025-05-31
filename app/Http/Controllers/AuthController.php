@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -26,12 +27,6 @@ class AuthController extends Controller
             ]);
         }
 
-        if (!$user->active) {
-            throw ValidationException::withMessages([
-                'email' => ['Sua conta está inativa. Entre em contato com o administrador.'],
-            ]);
-        }
-
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
@@ -47,41 +42,52 @@ class AuthController extends Controller
     }
 
     public function register(Request $request)
-{
-    try {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:8|confirmed',
-            'crm' => 'required|string|unique:users',
-            'phone' => 'required|string',
-        ]);
+    {
+        try {
+            $validatedData = $request->validate([
+                'name' => 'required|string|max:255',
+                'email' => 'required|string|email|max:255|unique:users',
+                'password' => 'required|string|min:8|confirmed',
+                'crm' => 'required|string|unique:users',
+                'phone' => 'required|string',
+            ]);
 
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'crm' => $request->crm,
-            'phone' => $request->phone,
-        ]);
+            $user = User::create([
+                'name' => $validatedData['name'],
+                'email' => $validatedData['email'],
+                'password' => Hash::make($validatedData['password']),
+                'crm' => $validatedData['crm'],
+                'phone' => $validatedData['phone'],
+            ]);
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+            // Cria o token de acesso pessoal
+            $token = $user->createToken('auth_token')->plainTextToken;
 
-        return response()->json([
-            'message' => 'Usuário criado com sucesso',
-            'user' => $user->only(['id', 'name', 'email', 'crm']),
-            'token' => $token,
-            'token_type' => 'Bearer',
-        ], 201);
-        
-    } catch (\Exception $e) {
-        \Log::error('Registration error: '.$e->getMessage());
-        return response()->json([
-            'message' => 'Erro no servidor',
-            'error' => $e->getMessage()
-        ], 500);
+            return response()->json([
+                'message' => 'Usuário criado com sucesso',
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'crm' => $user->crm,
+                    'phone' => $user->phone,
+                ],
+                'token' => $token,
+                'token_type' => 'Bearer',
+            ], 201);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => 'Erro de validação',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Registration error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Erro no servidor',
+                'error' => env('APP_DEBUG') ? $e->getMessage() : 'Ocorreu um erro inesperado'
+            ], 500);
+        }
     }
-}
 
     public function logout(Request $request)
     {
